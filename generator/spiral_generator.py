@@ -100,6 +100,7 @@ def generate_spiral(N):
     primes = sieve_of_eratosthenes(N)
 
     for num in range(1, N + 1):
+        print(num)
         data.append(get_num_info(num, x, y).model_dump())
 
         x += dx
@@ -124,4 +125,4 @@ def create_spiral_dataframe(N):
 
 
 if __name__ == "__main__":
-    create_spiral_dataframe(200000)
+    create_spiral_dataframe(1000000)
