@@ -1,6 +1,7 @@
 from nums import PSEUDOPRIME_NUMS
 import math
 import numpy
+import os
 import pandas as pd
 from typing import Literal, Tuple, List
 from pydantic import BaseModel, Field
@@ -130,9 +131,16 @@ def generate_spiral(N):
 
 
 def create_spiral_dataframe(N):
-    df = pd.DataFrame(generate_spiral(N), columns=NumInfo.model_fields.keys())
-    print(df.head())
-    df.to_csv(f"../data/{N}-spiral.csv", index=False)
+    data = generate_spiral(N)
+    df = pd.DataFrame(data, columns=NumInfo.model_fields.keys())
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(script_dir, '..', 'data')
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    file_path = os.path.join(data_dir, f"{N}-spiral.csv")
+    print(f"Сохранение в {file_path}...")
+    df.to_csv(file_path, index=False)
+    print("Файл успешно сохранен!")
 
 
 if __name__ == "__main__":
