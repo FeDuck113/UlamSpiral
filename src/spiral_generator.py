@@ -43,7 +43,6 @@ class NumInfo(BaseModel):
             "CATALAN",
         ]
     ] = []
-    types_str: str
 
 
 def sieve_of_eratosthenes(n: int):
@@ -91,8 +90,7 @@ def get_num_info(num: int, x_coord: int, y_coord: int) -> NumInfo:
         angle_deg=round(angle_deg, 2),
         label=label,
         is_pseudo=is_pseudo,
-        pseudoprime_types=pseudoprime_types,
-        types_str="|".join(pseudoprime_types)
+        pseudoprime_types=pseudoprime_types
     )
 
 
