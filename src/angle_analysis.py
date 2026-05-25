@@ -7,7 +7,7 @@ import seaborn as sns
 def analyze_and_plot_spiral(
     df_or_path: str,
     num_sectors: int = 10,
-    save_path: str = "spiral_sectors_plot.png",
+    save_path: str = "charts/spiral_sectors_plot.png",
 ):
     df = (
         pd.read_csv(df_or_path)
