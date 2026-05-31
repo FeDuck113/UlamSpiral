@@ -86,7 +86,7 @@ def main():
             results[name] = []
             print(f"Failed to parse {name}")
         time.sleep(1)
-    
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(script_dir, '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
