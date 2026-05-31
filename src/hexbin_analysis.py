@@ -6,25 +6,27 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'data'))
-FILE_NAME = os.path.join(DATA_DIR, '1000000-spiral.csv')
-PLOT_2_PATH = os.path.join(DATA_DIR, 'plot_2_hexbin_density.png')
+CHARTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'charts'))
 
+if not os.path.exists(CHARTS_DIR):
+    os.makedirs(CHARTS_DIR)
 
+FILE_NAME = os.path.join(DATA_DIR, '5000000-spiral.csv')
+PLOT_2_PATH = os.path.join(CHARTS_DIR, 'plot_2_hexbin_density.png')
 BG_COLOR = 'white'
 TEXT_COLOR = 'black'
-CMAP_THEME = 'YlOrRd'
+CMAP_THEME = 'plasma'
 
 
 def generate_density_plot(pseudos_dataframe):
     print("Анализ геометрической концентрации")
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(12, 10))
     ax.set_facecolor(BG_COLOR)
     fig.patch.set_facecolor(BG_COLOR)
     hb = ax.hexbin(pseudos_dataframe['x_coord'], pseudos_dataframe['y_coord'],
-                   gridsize=40, cmap=CMAP_THEME, mincnt=1, bins='log', edgecolors='none')
+                   gridsize=70, cmap=CMAP_THEME, mincnt=1, bins='log', edgecolors='none')
     cb = fig.colorbar(hb, ax=ax, fraction=0.046, pad=0.04)
     cb.set_label('Логарифм концентрации', color=TEXT_COLOR, rotation=270, labelpad=20)
     cb.ax.yaxis.set_tick_params(color=TEXT_COLOR)
