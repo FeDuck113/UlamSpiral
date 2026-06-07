@@ -4,7 +4,6 @@ import os
 import itertools
 import matplotlib
 import ast
-from collections import defaultdict
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -109,9 +108,8 @@ def run_efficiency_analysis(df_pseudo):
 
     for i, bar in enumerate(bars):
         width = bar.get_width()
-        cost = df_stats.iloc[i]['Cost']
         ax1.text(width + df_stats['Errors'].max() * 0.01, bar.get_y() + bar.get_height() / 2,
-                 f"Ошибок: {int(width)}, Стоимость: {cost}",
+                 f"Ошибок: {int(width)}",
                  va='center', fontsize=10, color=TEXT_COLOR)
 
     ax1.set_title("Эффективность одиночных тестов", fontsize=16, pad=15)

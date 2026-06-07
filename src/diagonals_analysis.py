@@ -38,7 +38,7 @@ def run_kuiper_test(df_pseudo):
         return phi / (2 * np.pi)
 
     kuiper_stat, p_value = kuiper(angles, uniform_cdf)
-    print(f"kuiper_statistic: {kuiper_stat:.4f}")
+    print(f"kuiper_stat: {kuiper_stat:.4f}")
     print(f"p_value: {p_value:.6g}")
 
     if p_value < 0.05:
@@ -59,14 +59,17 @@ def run_ransac_analysis(df_pseudo):
 
         X = remaining[['x_coord']].values
         y = remaining['y_coord'].values
+
         ransac_y = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=50000, random_state=42)
         ransac_y.fit(X, y)
         mask_y = ransac_y.inlier_mask_
         count_y = mask_y.sum()
+
         ransac_x = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=50000, random_state=42)
         ransac_x.fit(remaining[['y_coord']].values, remaining['x_coord'].values)
         mask_x = ransac_x.inlier_mask_
         count_x = mask_x.sum()
+
         is_vertical = count_x > count_y
 
         if not is_vertical and count_y >= MIN_POINTS_IN_LINE:
@@ -95,7 +98,7 @@ def run_ransac_analysis(df_pseudo):
         if inliers_count > max_inliers:
             max_inliers = inliers_count
 
-        print(f"Прямая {i + 1}: Найдено точек: {inliers_count}. Уравнение: {equation}")
+        print(f"Прямая {i + 1}: {inliers_count} точек, {equation}")
         slopes = []
 
         for _ in range(50):
@@ -114,8 +117,9 @@ def run_ransac_analysis(df_pseudo):
             slopes.append(lr.coef_[0])
 
         ci_lower, ci_upper = np.percentile(slopes, 2.5), np.percentile(slopes, 97.5)
-        print(f"Диапазон наклона: [{ci_lower:.4f}, {ci_upper:.4f}]")
+        print(f"Диапазон наклона: {ci_lower:.4f}, {ci_upper:.4f}")
         color = LINE_COLORS[i % len(LINE_COLORS)]
+
         lines_data.append({
             'pts_x': inlier_points['x_coord'],
             'pts_y': inlier_points['y_coord'],
@@ -128,21 +132,20 @@ def run_ransac_analysis(df_pseudo):
 
     print("Сохранение графиков...")
 
-    def setup_and_save_plot(show_noise, path, title):
+    def setup_and_save_plot(show_noise, path):
         fig, ax = plt.subplots(figsize=(12, 10))
         ax.set_facecolor(BG_COLOR)
         fig.patch.set_facecolor(BG_COLOR)
 
         if show_noise:
-            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, s=15, label='Псевдопростые числа',
-                       zorder=1)
+            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, s=15, zorder=1)
 
         for line in lines_data:
             ax.scatter(line['pts_x'], line['pts_y'], color=line['color'], s=30, zorder=3)
             ax.plot(line['line_x'], line['line_y'], color=line['color'], linewidth=2.5, linestyle='--', zorder=4,
                     label=line['label'])
 
-        ax.set_title(title, color=TEXT_COLOR, fontsize=16, pad=15)
+        ax.set_title("Диагонали RANSAC", color=TEXT_COLOR, fontsize=16, pad=15)
         ax.set_xlabel("X координата", color=TEXT_COLOR)
         ax.set_ylabel("Y координата", color=TEXT_COLOR)
         ax.tick_params(colors=TEXT_COLOR)
@@ -157,21 +160,21 @@ def run_ransac_analysis(df_pseudo):
         fig.savefig(path, dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-    setup_and_save_plot(show_noise=True, path=PLOT_NOISE_PATH, title="Диагонали RANSAC")
-    setup_and_save_plot(show_noise=False, path=PLOT_CLEAN_PATH, title="Диагонали RANSAC")
+    setup_and_save_plot(show_noise=True, path=PLOT_NOISE_PATH)
+    setup_and_save_plot(show_noise=False, path=PLOT_CLEAN_PATH)
     print("Графики сохранены\n")
 
     return max_inliers
 
 
-def run_monte_carlo_test(df_pseudo, observed_inliers, num_simulations=50):
+def run_monte_carlo_test(df_pseudo, max_inliers, simulations=50):
     print("Тест Монте-Карло")
     num_points = len(df_pseudo)
     min_x, max_x = df_pseudo['x_coord'].min(), df_pseudo['x_coord'].max()
     min_y, max_y = df_pseudo['y_coord'].min(), df_pseudo['y_coord'].max()
-    sim_max_inliers = []
+    sim_inliers = []
 
-    for _ in range(num_simulations):
+    for _ in range(simulations):
         sim_x = np.random.uniform(min_x, max_x, num_points)
         sim_y = np.random.uniform(min_y, max_y, num_points)
         ransac_y = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=1000)
@@ -180,9 +183,9 @@ def run_monte_carlo_test(df_pseudo, observed_inliers, num_simulations=50):
         ransac_x = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=1000)
         ransac_x.fit(sim_y.reshape(-1, 1), sim_x)
         in_x = ransac_x.inlier_mask_.sum()
-        sim_max_inliers.append(max(in_y, in_x))
+        sim_inliers.append(max(in_y, in_x))
 
-    p_value = (np.count_nonzero(np.array(sim_max_inliers) >= observed_inliers) + 1) / (num_simulations + 1)
+    p_value = (np.count_nonzero(np.array(sim_inliers) >= max_inliers) + 1) / (simulations + 1)
     print(f"p_value: {p_value:.4f}")
 
     if p_value < 0.05:
@@ -202,4 +205,4 @@ if __name__ == "__main__":
         max_inliers = run_ransac_analysis(df_pseudo)
 
         if max_inliers > 0:
-            run_monte_carlo_test(df_pseudo, max_inliers, num_simulations=50)
+            run_monte_carlo_test(df_pseudo, max_inliers, simulations=50)
