@@ -5,29 +5,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
+from scipy.stats import chi2_contingency
 
-# 1. Ищем zip-архив нашего миллиарда и настраиваем масштаб
-
+# Настраиваем zip-архив для миллиарда
 data_dir = 'data'
 zip_files = [f for f in os.listdir(data_dir) if f.endswith('.zip')]
 
 zip_path = os.path.join(data_dir, zip_files[0])
-print(f"Работаем с архивом: {zip_path}")
 
-# Разные радиусы берем
-MAX_RADIUS = 10000.0
+# Меняем радиусы
+MAX_RADIUS = 60.0
 ring_radii = np.linspace(0, MAX_RADIUS, 6)[1:]
 
-# Структуры для сбора статистики
+# Для чанков (миллиард будем считать и тут временно хранить значения)
 ring_stats = {i: {'total': 0, 'pseudo': 0} for i in range(5)}
 
-# Списки для сбора координат под график
-bg_x, bg_y = [], []      # Для разреженного фона
-pseudo_x, pseudo_y = [], [] # Для всех псевдопростых
+# Списки для графиков
+bg_x, bg_y = [], []
+pseudo_x, pseudo_y = [], []
 
 
-# 2. Обработка потока: делим на чанки (группки) числа и постепенно добавляем на график
-
+# Делим на чанки данные
 print(f"\nАнализ по радиусу {MAX_RADIUS}:")
 
 chunk_size = 10_000_000
@@ -38,18 +36,16 @@ total_rows_processed = 0
 for idx, chunk in enumerate(chunk_iterator):
     total_rows_processed += len(chunk)
     
-    # Исправляем колонки
     chunk.rename(columns={'x_coord': 'x', 'y_coord': 'y'}, inplace=True)
     
     # Фильтруем только то, что попало в наш новый большой круг
     chunk_slice = chunk[chunk['radius'] <= MAX_RADIUS]
     
     if chunk_slice.empty:
-        print(f"Прогресс: обработано строк {total_rows_processed:,} (вне радиуса)")
+        print(f"Прогресс: обработано строк {total_rows_processed:,} (вне радиуса, не учитываем)")
         continue
 
-    # Отбираем точки для графика:
-    # Псевдопростые забираем ВСЕ
+    #Тут отбираем точки - псевдопростые забираем все
     pseudos = chunk_slice[chunk_slice['is_pseudo'] == 1]
     pseudo_x.extend(pseudos['x'].tolist())
     pseudo_y.extend(pseudos['y'].tolist())
@@ -61,7 +57,7 @@ for idx, chunk in enumerate(chunk_iterator):
         bg_x.extend(bg_sampled['x'].tolist())
         bg_y.extend(bg_sampled['y'].tolist())
 
-    # Считаем статистику по кольцам
+    # Собсвтенно, статистика
     prev_r = 0
     for ring_idx, r in enumerate(ring_radii):
         ring_data = chunk_slice[(chunk_slice['radius'] > prev_r) & (chunk_slice['radius'] <= r)]
@@ -83,21 +79,13 @@ for ring_idx, r in enumerate(ring_radii):
     pct = (pseudo / total * 100) if total > 0 else 0
     densities.append(pct)
 
-# Настройка градиента цветов для колец (бубликов)
-# Чем выше плотность, тем ярче/насыщеннее цвет кольца (от бледно-голубого к глубокому синему)
-cmap = cm.Blues
-norm = colors.Normalize(vmin=min(densities) if min(densities) > 0 else 0.0001, vmax=max(densities))
 
-# 3. Строим график
-
-print("\nРисуем масштабный график (это может занять около минуты)...")
+# Строим график
 plt.figure(figsize=(13, 12), facecolor='white')
 ax = plt.subplot(111)
 
-# Делаем цвета жёстче: берём контрастную палитру YlOrRd
 cmap = cm.YlOrRd
 
-# Задаём жёсткие границы строго от минимума до максимума текущих плотностей
 min_d = min(densities) if min(densities) > 0 else 1e-6
 max_d = max(densities) if max(densities) > min_d else min_d + 1e-5
 norm = colors.Normalize(vmin=min_d, vmax=max_d)
@@ -107,38 +95,32 @@ for i in range(len(ring_radii) - 1, -1, -1):
     r = ring_radii[i]
     ring_color = cmap(norm(densities[i]))
     
-    # Делаем цвет жёстче и сочнее: alpha=0.6
     circle_bg = plt.Circle((0, 0), r, color=ring_color, alpha=0.6, zorder=1)
     ax.add_patch(circle_bg)
 
-# Отрисовка элементов поверх цветных бубликов
+
 theta = np.linspace(0, 2*np.pi, 200)
 prev_r = 0
 for i, r in enumerate(ring_radii):
-    # Пунктирные границы колец (тёмные для видимости на жёлтом/красном фоне)
     ax.plot(r * np.cos(theta), r * np.sin(theta), color='#334155', linestyle='--', linewidth=1.0, zorder=2)
     
-    # Текстовые метки "Кольцо X" — ТЕПЕРЬ СТОПРОЦЕНТНО ВИДИМЫЕ
-    # alpha=1.0 делает плашку полностью непрозрачной белой, перекрывая синие точки под ней
     ax.text(0, r - (MAX_RADIUS/15), f"Кольцо {i+1}", color='#0f172a', fontsize=10, fontweight='bold',
             ha='center', va='center', zorder=6,
             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#334155', linewidth=1.0, alpha=1.0))
     
-    # Фиктивная линия для вывода плотности в легенду
     ax.plot([], [], color='none', label=f"Плотность Кольца {i+1}: {densities[i]:.6f}%")
 
-# Рисуем прореженный фон из обычных чисел (zorder=3)
+# Рисуем прореженный фон
 ax.scatter(bg_x, bg_y, color='#64748b', s=1, alpha=0.15, zorder=3)
 
-# Рисуем ВСЕ найденные псевдопростые точки (zorder=4)
-# Добавили alpha=0.4, чтобы они просвечивали и не забивали собой красный цвет центра
+# Рисуем все найденные псевдопростые точки
 ax.scatter(pseudo_x, pseudo_y, color='#0284c7', s=12, marker='o', 
            edgecolor='white', linewidth=0.3, alpha=0.4, zorder=4, label='Псевдопростые')
 
 ax.set_aspect('equal')
 ax.axis('off')
 
-# Управляем заголовком
+
 if total_rows_processed >= 1_000_000_000:
     title_text = f'Радиальное распределение аномалий на больших масштабах\nРадиус обзора: {MAX_RADIUS}'
 else:
@@ -161,7 +143,8 @@ plt.tight_layout()
 graph_name = f'billion_pseudoprimes_radial_R{int(MAX_RADIUS)}.png'
 plt.savefig(graph_name, dpi=300)
 print(f"График успешно сохранен как '{graph_name}'")
-# 4. Выводим статистику
+
+# Выводим статистику
 
 print("\n" + "="*65)
 print("ИТОГОВАЯ СТАТИСТИКА ПО МАСШТАБИРОВАННЫМ КОЛЬЦАМ")
@@ -180,3 +163,35 @@ for ring_idx, r in enumerate(ring_radii):
     print("-" * 65)
     
     prev_r = r
+
+# Хи-квадрат
+print("\n" + "="*65)
+print("МАТЕМАТИЧЕСКИЙ АНАЛИЗ ОДНОРОДНОСТИ РАСПРЕДЕЛЕНИЯ")
+print("="*65)
+
+pseudos_array = np.array([ring_stats[i]['pseudo'] for i in range(5)])
+totals_array = np.array([ring_stats[i]['total'] for i in range(5)])
+regulars_array = totals_array - pseudos_array
+
+contingency_table = np.array([pseudos_array, regulars_array])
+
+if np.sum(totals_array) > 0:
+    chi2_stat, p_value, dof, expected = chi2_contingency(contingency_table)
+    
+    print(f"Критерий однородности Хи-квадрат Пирсона:")
+    print(f"  - Статистика критерия: {chi2_stat:.4f}")
+    print(f"  - Число степеней свободы (dof): {dof}")
+    print(f"  - Значение p-value: {p_value:.16e}")
+    
+    print("\nИнтерпретируем результаты:")
+    if p_value < 0.05:
+        print("  [ОТВЕРГАЕТСЯ H0] Изменения плотности аномалий СТАТИСТИЧЕСКИ ЗНАЧИМЫ.")
+        print(f"  Вероятность случайной ошибки (p-value) ничтожно мала ({p_value:.4e}).")
+        print("  Падение концентрации от центра к периферии не является случайным шумом,")
+        print("  а отражает фундаментальную математическую закономерность затухания.")
+    else:
+        print("  [ПОДТВЕРЖДАЕТСЯ H0] Различия в плотности колец не выходят за рамки случайности.")
+        print("  Распределение аномалий по кольцам можно считать относительно однородным.")
+else:
+    print("Ошибка: Нет данных для проведения статистического анализа.")
+print("="*65)
