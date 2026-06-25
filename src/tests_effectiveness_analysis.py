@@ -4,6 +4,8 @@ import os
 import itertools
 import matplotlib
 import ast
+from collections import defaultdict
+from matplotlib.patches import Patch
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -25,11 +27,13 @@ TEXT_COLOR = 'black'
 STANDARD_TEST_COST = 10.0
 
 TEST_COSTS = {
-    "MILLER_RABIN": 1.2, "EULER_JACOBI": 1.5, "ABSOLUTE_EULER": 1.5,
+    "MILLER_RABIN": 1.2, "EULER_JACOBI": 1.5,
     "EULER": 1.5, "BRUCKMAN_LUCAS": 3.0, "ODD_FIBONACCI": 3.0,
     "UNRESTRICTED_PERRIN": 3.0, "RESTRICTED_PERRIN": 3.0, "NSW": 3.0,
-    "FROBENIUS": 3.0, "CATALAN": 3.0, "FERMAT": 1.0, "CARMICHAEL": 1.0
+    "FROBENIUS": 3.0, "CATALAN": 3.0, "FERMAT": 1.0
 }
+
+NON_TESTS = {"CARMICHAEL", "ABSOLUTE_EULER"}
 
 
 def get_cost(test_name):
@@ -53,7 +57,7 @@ def run_efficiency_analysis(df_pseudo):
         types = types_raw.split('|')
 
         for t in types:
-            if not t:
+            if not t or t in NON_TESTS:
                 continue
             if t not in errors_map:
                 errors_map[t] = set()
@@ -101,6 +105,7 @@ def run_efficiency_analysis(df_pseudo):
     df_stats = pd.DataFrame(stats)
     df_stats['Score'] = (df_stats['Errors'] + 1) * df_stats['Cost']
     df_stats = df_stats.sort_values(by=['Errors', 'Cost'], ascending=[False, False])
+
     fig1, ax1 = plt.subplots(figsize=(14, 10))
     fig1.patch.set_facecolor(BG_COLOR)
     ax1.set_facecolor(BG_COLOR)
@@ -125,11 +130,14 @@ def run_efficiency_analysis(df_pseudo):
     costs = [best_combos[k]['cost'] for k in range(1, 6)] + [STANDARD_TEST_COST]
     errors = [best_combos[k]['errors'] for k in range(1, 6)] + [0]
     combos = ["\n+\n".join(best_combos[k]['combo']) for k in range(1, 6)] + ["Стандартный\nалгоритм"]
+
     fig2, ax2 = plt.subplots(figsize=(12, 8))
     fig2.patch.set_facecolor(BG_COLOR)
     ax2.set_facecolor(BG_COLOR)
+
     bar_colors = ['#34A853' if e == 0 else '#EA4335' for e in errors[:-1]] + ['#4285F4']
     bars2 = ax2.bar(x_labels, costs, color=bar_colors, edgecolor='black', alpha=0.85)
+
     ax2.set_title("Оптимальные комбинации тестов", fontsize=16, pad=20)
     ax2.set_xlabel("Количество тестов", fontsize=12)
     ax2.set_ylabel("Вычислительная стоимость", fontsize=12)
@@ -143,13 +151,16 @@ def run_efficiency_analysis(df_pseudo):
                  fontweight='bold', bbox=dict(facecolor='black', alpha=0.6, edgecolor='none', pad=2))
 
         text_color = '#34A853' if errors[i] == 0 and i != 5 else '#EA4335'
-
         if i == 5:
             text_color = '#4285F4'
 
         ax2.text(bar.get_x() + bar.get_width() / 2, height + 0.15,
                  err_text, ha='center', va='bottom', fontsize=11, fontweight='bold',
                  color=text_color)
+
+    legend_combo = [
+        Patch(facecolor='#4285F4', edgecolor='black', label='Стандартный алгоритм\n(10-40 раундов Миллера-Рабина)')]
+    ax2.legend(handles=legend_combo, loc='upper left', facecolor='white', edgecolor='#cccccc', fontsize=11)
 
     ax2.set_ylim(0, max(costs) + 2.0)
     ax2.grid(True, axis='y', color='#e0e0e0', linestyle='--')
@@ -158,9 +169,15 @@ def run_efficiency_analysis(df_pseudo):
     plt.close(fig2)
 
     print("Построение графика стоимости тестов...")
-    df_costs = df_stats[['Test', 'Cost']].copy()
+    unique_costs = []
+    for base_name, cost in TEST_COSTS.items():
+        if any(base_name in t for t in test_names):
+            unique_costs.append({'Test': base_name, 'Cost': cost})
+
+    df_costs = pd.DataFrame(unique_costs)
     df_costs.loc[len(df_costs)] = ['STANDARD_ALGORITHM', STANDARD_TEST_COST]
     df_costs = df_costs.sort_values(by=['Cost', 'Test'], ascending=[True, False])
+
     fig3, ax3 = plt.subplots(figsize=(12, 10))
     fig3.patch.set_facecolor(BG_COLOR)
     ax3.set_facecolor(BG_COLOR)
@@ -185,17 +202,18 @@ def run_efficiency_analysis(df_pseudo):
     ax3.set_xlim(0, STANDARD_TEST_COST + 1.5)
     ax3.grid(True, axis='x', color='#e0e0e0', linestyle='--')
 
-    from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor='#34A853', edgecolor='black', label='Низкая (≤1.2)'),
-        Patch(facecolor='#FBBC04', edgecolor='black', label='Средняя (1.5)'),
-        Patch(facecolor='#EA4335', edgecolor='black', label='Высокая (≥3.0)'),
-        Patch(facecolor='#4285F4', edgecolor='black', label='Стандарт (10.0)')
+        Patch(facecolor='#34A853', edgecolor='black', label='Низкая'),
+        Patch(facecolor='#FBBC04', edgecolor='black', label='Средняя'),
+        Patch(facecolor='#EA4335', edgecolor='black', label='Высокая'),
+        Patch(facecolor='#4285F4', edgecolor='black', label='Стандартная')
     ]
     ax3.legend(handles=legend_elements, loc='lower right', facecolor='white', edgecolor='#cccccc', fontsize=11)
+
     plt.tight_layout()
     fig3.savefig(COST_PLOT_PATH, dpi=300)
     plt.close(fig3)
+
     print("Графики сохранены\n")
 
 
@@ -215,16 +233,15 @@ if __name__ == "__main__":
     if not os.path.exists(FILE_NAME):
         print(f"Ошибка: Файл {FILE_NAME} не найден.")
     else:
-        print(f"Чтение файла {FILE_NAME}...")
-        chunk_list = []
+        print(f"Чтение файла {FILE_NAME}...\n")
 
+        chunk_list = []
         for chunk in pd.read_csv(FILE_NAME, chunksize=1000000):
             filtered = chunk[chunk['is_pseudo'] == 1]
             chunk_list.append(filtered)
 
         df_pseudo = pd.concat(chunk_list, ignore_index=True)
         print(f"Псевдопростые числа: {len(df_pseudo)}\n")
-        print("Преобразование форматов колонок...")
 
         if 'types_str' not in df_pseudo.columns and 'pseudo_types' in df_pseudo.columns:
             df_pseudo['types_str'] = df_pseudo['pseudo_types'].apply(clean_and_parse_types)

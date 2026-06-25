@@ -6,8 +6,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from astropy.stats import kuiper
-from sklearn.linear_model import RANSACRegressor, LinearRegression
-from sklearn.utils import resample
+from sklearn.linear_model import RANSACRegressor
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'data'))
@@ -22,11 +21,11 @@ PLOT_CLEAN_PATH = os.path.join(CHARTS_DIR, 'ransac_lines_clean.png')
 
 MAX_LINES_TO_FIND = 5
 MIN_POINTS_IN_LINE = 15
-RESIDUAL_THRESHOLD = 0.8
+RESIDUAL_THRESHOLD = 0.01
 
 BG_COLOR = 'white'
 TEXT_COLOR = 'black'
-NOISE_COLOR = '#8c8c8c'
+NOISE_COLOR = '#d3d3d3'
 LINE_COLORS = ['#d62728', '#1f77b4', '#2ca02c', '#ff7f0e', '#9467bd']
 
 
@@ -45,6 +44,62 @@ def run_kuiper_test(df_pseudo):
         print("Распределение не случайно\n")
     else:
         print("Распределение случайно\n")
+
+
+def run_scale_stability_test(df_pseudo):
+    print("Тест устойчивости к объему выборки")
+    thresholds = [1.0, 0.5, 0.25, 0.1, 0.05, 0.01, 0.005, 0.001]
+    max_num = df_pseudo['num'].max()
+
+    for t in thresholds:
+        limit = int(max_num * t)
+        subset = df_pseudo[df_pseudo['num'] <= limit]
+
+        print(f"Выборка {t * 100:.1f}%, N <= {limit}")
+
+        if len(subset) < MIN_POINTS_IN_LINE:
+            print("Недостаточно данных\n")
+            continue
+
+        remaining = subset.copy()
+
+        for i in range(MAX_LINES_TO_FIND):
+            if len(remaining) < MIN_POINTS_IN_LINE:
+                break
+
+            X = remaining[['x_coord']].values
+            y = remaining['y_coord'].values
+
+            ransac_y = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=50000, random_state=42)
+            ransac_y.fit(X, y)
+            count_y = ransac_y.inlier_mask_.sum()
+
+            ransac_x = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=50000, random_state=42)
+            ransac_x.fit(remaining[['y_coord']].values, remaining['x_coord'].values)
+            count_x = ransac_x.inlier_mask_.sum()
+
+            is_vertical = count_x > count_y
+
+            if not is_vertical and count_y >= MIN_POINTS_IN_LINE:
+                mask = ransac_y.inlier_mask_
+                m = ransac_y.estimator_.coef_[0]
+                c = ransac_y.estimator_.intercept_
+                sign = "+" if c >= 0 else "-"
+                equation = f"y = {m:.2f}x {sign} {abs(c):.2f}"
+            elif is_vertical and count_x >= MIN_POINTS_IN_LINE:
+                mask = ransac_x.inlier_mask_
+                m = ransac_x.estimator_.coef_[0]
+                c = ransac_x.estimator_.intercept_
+                sign = "+" if c >= 0 else "-"
+                equation = f"x = {m:.2f}y {sign} {abs(c):.2f}"
+            else:
+                break
+
+            inliers_count = mask.sum()
+            print(f"Прямая {i + 1}: {inliers_count} точек, {equation}")
+
+            remaining = remaining[~mask]
+        print("")
 
 
 def run_ransac_analysis(df_pseudo):
@@ -98,26 +153,19 @@ def run_ransac_analysis(df_pseudo):
         if inliers_count > max_inliers:
             max_inliers = inliers_count
 
-        print(f"Прямая {i + 1}: {inliers_count} точек, {equation}")
-        slopes = []
+        n_min = inlier_points['num'].min()
+        n_max = inlier_points['num'].max()
+        x_min = inlier_points['x_coord'].min()
+        x_max = inlier_points['x_coord'].max()
+        y_min = inlier_points['y_coord'].min()
+        y_max = inlier_points['y_coord'].max()
 
-        for _ in range(50):
-            sample = resample(inlier_points, replace=True)
+        print(f"Прямая {i + 1}: {equation}")
+        print(f"Точек: {inliers_count}")
+        print(f"Диапазон N: {n_min} - {n_max}")
+        print(f"Диапазон X: {x_min} - {x_max}")
+        print(f"Диапазон Y: {y_min} - {y_max}\n")
 
-            if len(sample) < 2:
-                continue
-
-            lr = LinearRegression()
-
-            if is_vertical:
-                lr.fit(sample[['y_coord']].values, sample['x_coord'].values)
-            else:
-                lr.fit(sample[['x_coord']].values, sample['y_coord'].values)
-
-            slopes.append(lr.coef_[0])
-
-        ci_lower, ci_upper = np.percentile(slopes, 2.5), np.percentile(slopes, 97.5)
-        print(f"Диапазон наклона: {ci_lower:.4f}, {ci_upper:.4f}")
         color = LINE_COLORS[i % len(LINE_COLORS)]
 
         lines_data.append({
@@ -138,7 +186,8 @@ def run_ransac_analysis(df_pseudo):
         fig.patch.set_facecolor(BG_COLOR)
 
         if show_noise:
-            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, s=15, zorder=1)
+            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, alpha=0.3, s=15, zorder=1,
+                       label='Остальные псевдопростые')
 
         for line in lines_data:
             ax.scatter(line['pts_x'], line['pts_y'], color=line['color'], s=30, zorder=3)
@@ -152,8 +201,9 @@ def run_ransac_analysis(df_pseudo):
         ax.grid(True, color='#e0e0e0', linestyle='--', zorder=0)
 
         if len(ax.get_legend_handles_labels()[0]) > 0:
+            legend_title = None if show_noise else "Уравнения прямых:"
             ax.legend(facecolor='white', edgecolor='#cccccc', labelcolor=TEXT_COLOR, loc='center left',
-                      bbox_to_anchor=(1.02, 0.5), fontsize=11)
+                      bbox_to_anchor=(1.02, 0.5), fontsize=11, title=legend_title)
 
         ax.axis('equal')
         plt.tight_layout()
@@ -167,7 +217,7 @@ def run_ransac_analysis(df_pseudo):
     return max_inliers
 
 
-def run_monte_carlo_test(df_pseudo, max_inliers, simulations=50):
+def run_monte_carlo_test(df_pseudo, observed_inliers, simulations=50):
     print("Тест Монте-Карло")
     num_points = len(df_pseudo)
     min_x, max_x = df_pseudo['x_coord'].min(), df_pseudo['x_coord'].max()
@@ -177,15 +227,21 @@ def run_monte_carlo_test(df_pseudo, max_inliers, simulations=50):
     for _ in range(simulations):
         sim_x = np.random.uniform(min_x, max_x, num_points)
         sim_y = np.random.uniform(min_y, max_y, num_points)
+
         ransac_y = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=1000)
         ransac_y.fit(sim_x.reshape(-1, 1), sim_y)
         in_y = ransac_y.inlier_mask_.sum()
+
         ransac_x = RANSACRegressor(residual_threshold=RESIDUAL_THRESHOLD, max_trials=1000)
         ransac_x.fit(sim_y.reshape(-1, 1), sim_x)
         in_x = ransac_x.inlier_mask_.sum()
+
         sim_inliers.append(max(in_y, in_x))
 
-    p_value = (np.count_nonzero(np.array(sim_inliers) >= max_inliers) + 1) / (simulations + 1)
+    p_value = (np.count_nonzero(np.array(sim_inliers) >= observed_inliers) + 1) / (simulations + 1)
+    max_sim_inliers = max(sim_inliers)
+
+    print(f"Максимальное количество точек: {max_sim_inliers}")
     print(f"p_value: {p_value:.4f}")
 
     if p_value < 0.05:
@@ -200,8 +256,11 @@ if __name__ == "__main__":
     else:
         dataframe = pd.read_csv(FILE_NAME)
         df_pseudo = dataframe[dataframe['is_pseudo'] == 1].copy()
+
         print(f"Псевдопростые числа: {len(df_pseudo)}\n")
+
         run_kuiper_test(df_pseudo)
+        run_scale_stability_test(df_pseudo)
         max_inliers = run_ransac_analysis(df_pseudo)
 
         if max_inliers > 0:
