@@ -25,7 +25,7 @@ RESIDUAL_THRESHOLD = 0.01
 
 BG_COLOR = 'white'
 TEXT_COLOR = 'black'
-NOISE_COLOR = '#d3d3d3'
+NOISE_COLOR = '#8c8c8c'
 LINE_COLORS = ['#d62728', '#1f77b4', '#2ca02c', '#ff7f0e', '#9467bd']
 
 
@@ -174,11 +174,20 @@ def run_ransac_analysis(df_pseudo):
             'line_x': line_x,
             'line_y': line_y,
             'color': color,
-            'label': equation
+            'label': f"{equation}  (n={inliers_count})"
         })
         remaining = remaining[~mask]
 
     print("Сохранение графиков...")
+
+    xlims, ylims = None, None
+    if lines_data:
+        all_x = np.concatenate([line['pts_x'] for line in lines_data])
+        all_y = np.concatenate([line['pts_y'] for line in lines_data])
+        pad_x = (all_x.max() - all_x.min()) * 0.05
+        pad_y = (all_y.max() - all_y.min()) * 0.05
+        xlims = (all_x.min() - pad_x, all_x.max() + pad_x)
+        ylims = (all_y.min() - pad_y, all_y.max() + pad_y)
 
     def setup_and_save_plot(show_noise, path):
         fig, ax = plt.subplots(figsize=(12, 10))
@@ -186,8 +195,7 @@ def run_ransac_analysis(df_pseudo):
         fig.patch.set_facecolor(BG_COLOR)
 
         if show_noise:
-            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, alpha=0.3, s=15, zorder=1,
-                       label='Остальные псевдопростые')
+            ax.scatter(df_pseudo['x_coord'], df_pseudo['y_coord'], color=NOISE_COLOR, alpha=0.3, s=15, zorder=1, label='Остальные псевдопростые')
 
         for line in lines_data:
             ax.scatter(line['pts_x'], line['pts_y'], color=line['color'], s=30, zorder=3)
@@ -200,12 +208,16 @@ def run_ransac_analysis(df_pseudo):
         ax.tick_params(colors=TEXT_COLOR)
         ax.grid(True, color='#e0e0e0', linestyle='--', zorder=0)
 
+        if xlims and ylims:
+            ax.set_xlim(xlims)
+            ax.set_ylim(ylims)
+
         if len(ax.get_legend_handles_labels()[0]) > 0:
             legend_title = None if show_noise else "Уравнения прямых:"
             ax.legend(facecolor='white', edgecolor='#cccccc', labelcolor=TEXT_COLOR, loc='center left',
                       bbox_to_anchor=(1.02, 0.5), fontsize=11, title=legend_title)
 
-        ax.axis('equal')
+        ax.set_aspect('equal', adjustable='box')
         plt.tight_layout()
         fig.savefig(path, dpi=300, bbox_inches='tight')
         plt.close(fig)

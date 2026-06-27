@@ -57,13 +57,13 @@ def run_efficiency_analysis(df_pseudo):
         types = types_raw.split('|')
 
         for t in types:
-            if not t or t in NON_TESTS:
+            if not t:
                 continue
             if t not in errors_map:
                 errors_map[t] = set()
             errors_map[t].add(num)
 
-    test_names = list(errors_map.keys())
+    test_names = [t for t in errors_map.keys() if t not in NON_TESTS]
     best_combos = {}
     print("Поиск оптимальных комбинаций...")
 
@@ -97,29 +97,29 @@ def run_efficiency_analysis(df_pseudo):
     for k in range(1, 6):
         data = best_combos[k]
         combo_str = " + ".join(data['combo'])
-        print(f"{k} тест(ов): {combo_str}")
+        print(f"Количество тестов: {k}")
+        print(f"Связка: {combo_str}")
         print(f"Ошибок: {data['errors']}, Стоимость: {data['cost']:.1f}\n")
 
-    print("Построение графика одиночных тестов...")
-    stats = [{'Test': t, 'Errors': len(e), 'Cost': get_cost(t)} for t, e in errors_map.items()]
+    print("Построение графика количества псевдопростых чисел...")
+    stats = [{'Test': t, 'Count': len(e)} for t, e in errors_map.items()]
     df_stats = pd.DataFrame(stats)
-    df_stats['Score'] = (df_stats['Errors'] + 1) * df_stats['Cost']
-    df_stats = df_stats.sort_values(by=['Errors', 'Cost'], ascending=[False, False])
+    df_stats = df_stats.sort_values(by='Count', ascending=False)
 
     fig1, ax1 = plt.subplots(figsize=(14, 10))
     fig1.patch.set_facecolor(BG_COLOR)
     ax1.set_facecolor(BG_COLOR)
-    bars = ax1.barh(df_stats['Test'], df_stats['Errors'], color='#4285F4', edgecolor='black', alpha=0.8)
+    bars = ax1.barh(df_stats['Test'], df_stats['Count'], color='#4285F4', edgecolor='black', alpha=0.8)
 
     for i, bar in enumerate(bars):
         width = bar.get_width()
-        ax1.text(width + df_stats['Errors'].max() * 0.01, bar.get_y() + bar.get_height() / 2,
-                 f"Ошибок: {int(width)}",
+        ax1.text(width + df_stats['Count'].max() * 0.01, bar.get_y() + bar.get_height() / 2,
+                 f"Псевдопростых: {int(width)}",
                  va='center', fontsize=10, color=TEXT_COLOR)
 
-    ax1.set_title("Эффективность одиночных тестов", fontsize=16, pad=15)
-    ax1.set_xlabel("Количество ошибок", fontsize=12)
-    ax1.set_xlim(0, df_stats['Errors'].max() * 1.15)
+    ax1.set_title("Количество псевдопростых чисел каждого типа", fontsize=16, pad=15)
+    ax1.set_xlabel("Количество псевдопростых чисел", fontsize=12)
+    ax1.set_xlim(0, df_stats['Count'].max() * 1.25)
     ax1.grid(True, axis='x', color='#e0e0e0', linestyle='--')
     plt.tight_layout()
     fig1.savefig(RANKING_PLOT_PATH, dpi=300)
@@ -171,6 +171,8 @@ def run_efficiency_analysis(df_pseudo):
     print("Построение графика стоимости тестов...")
     unique_costs = []
     for base_name, cost in TEST_COSTS.items():
+        if base_name in NON_TESTS:
+            continue
         if any(base_name in t for t in test_names):
             unique_costs.append({'Test': base_name, 'Cost': cost})
 
